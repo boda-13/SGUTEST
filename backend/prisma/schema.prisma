@@ -1,0 +1,434 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  student
+  doctor
+  admin
+}
+
+enum StudentStatus {
+  active
+  suspended
+  graduated
+  withdrawn
+}
+
+enum DoctorTitle {
+  TA
+  Lecturer
+  AssistantProfessor
+  Professor
+}
+
+enum EnrollmentStatus {
+  enrolled
+  passed
+  failed
+  withdrawn
+}
+
+enum AttendanceStatus {
+  present
+  absent
+  late
+  excused
+}
+
+enum ExamType {
+  quiz
+  midterm
+  final
+  practical
+}
+
+enum RequestType {
+  certificate
+  enrollment_certificate
+  transcript
+  withdrawal
+  course_registration
+  complaint
+}
+
+enum RequestStatus {
+  pending
+  under_review
+  approved
+  rejected
+  ready
+}
+
+enum NotificationType {
+  info
+  warning
+  success
+  danger
+}
+
+enum PaymentStatus {
+  pending
+  paid
+  overdue
+  cancelled
+}
+
+enum PaymentType {
+  tuition
+  services
+  penalty
+}
+
+enum DayOfWeek {
+  Sunday
+  Monday
+  Tuesday
+  Wednesday
+  Thursday
+  Friday
+  Saturday
+}
+
+enum SessionType {
+  lecture
+  lab
+  section
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  email        String    @unique
+  passwordHash String
+  fullName     String
+  phone        String?
+  role         Role
+  avatarUrl    String?
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  student         Student?
+  doctor          Doctor?
+  notifications   Notification[]
+  sentMessages    Message[]      @relation("SentMessages")
+  receivedMessages Message[]     @relation("ReceivedMessages")
+  loginHistory    LoginHistory[]
+  activityLogs    ActivityLog[]
+  announcements   Announcement[]
+  createdAssignments Assignment[]
+  gradedSubmissions  Submission[] @relation("GradedBy")
+  createdExams    Exam[]
+  handledRequests Request[]      @relation("HandledBy")
+  updatedGrades   Grade[]       @relation("UpdatedBy")
+  recordedAttendance Attendance[] @relation("RecordedBy")
+  deanOfFaculties Faculty[]     @relation("Dean")
+  headOfDepartments Department[] @relation("Head")
+
+  @@index([email])
+  @@index([role])
+}
+
+model Faculty {
+  id        Int      @id @default(autoincrement())
+  name      String
+  code      String   @unique
+  deanId    Int?
+  dean      User?    @relation("Dean", fields: [deanId], references: [id])
+  createdAt DateTime @default(now())
+  departments Department[]
+}
+
+model Department {
+  id        Int      @id @default(autoincrement())
+  facultyId Int
+  name      String
+  code      String   @unique
+  headId    Int?
+  faculty   Faculty  @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  head      User?    @relation("Head", fields: [headId], references: [id])
+  students  Student[]
+  doctors   Doctor[]
+  courses   Course[]
+  createdAt DateTime @default(now())
+}
+
+model Student {
+  id             Int           @id @default(autoincrement())
+  userId         Int           @unique
+  studentCode    String        @unique
+  departmentId   Int
+  level          Int           @default(1)
+  semester       Int           @default(1)
+  enrollmentYear Int
+  gpa            Decimal       @default(0.00) @db.Decimal(3, 2)
+  totalCredits   Int           @default(0)
+  status         StudentStatus @default(active)
+  createdAt      DateTime      @default(now())
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department  Department   @relation(fields: [departmentId], references: [id])
+  enrollments Enrollment[]
+  attendance  Attendance[]
+  submissions Submission[]
+  requests    Request[]
+  payments    Payment[]
+
+  @@index([studentCode])
+}
+
+model Doctor {
+  id           Int         @id @default(autoincrement())
+  userId       Int         @unique
+  doctorCode   String      @unique
+  departmentId Int
+  title        DoctorTitle
+  officeRoom   String?
+  hireDate     DateTime?
+  createdAt    DateTime    @default(now())
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department Department @relation(fields: [departmentId], references: [id])
+  courses    Course[]
+}
+
+model Course {
+  id           Int      @id @default(autoincrement())
+  code         String   @unique
+  name         String
+  description  String?  @db.Text
+  departmentId Int
+  doctorId     Int?
+  level        Int
+  semester     Int
+  creditHours  Int      @default(3)
+  maxStudents  Int      @default(100)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  department    Department     @relation(fields: [departmentId], references: [id])
+  doctor        Doctor?        @relation(fields: [doctorId], references: [id])
+  enrollments   Enrollment[]
+  attendance    Attendance[]
+  assignments   Assignment[]
+  exams         Exam[]
+  schedules     Schedule[]
+  announcements Announcement[]
+
+  @@index([code])
+}
+
+model Enrollment {
+  id           Int              @id @default(autoincrement())
+  studentId    Int
+  courseId     Int
+  academicYear String
+  semester     Int
+  status       EnrollmentStatus @default(enrolled)
+  enrolledAt   DateTime         @default(now())
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  grade   Grade?
+
+  @@unique([studentId, courseId, academicYear, semester])
+}
+
+model Grade {
+  id           Int      @id @default(autoincrement())
+  enrollmentId Int      @unique
+  midterm      Decimal  @default(0) @db.Decimal(5, 2)
+  practical    Decimal  @default(0) @db.Decimal(5, 2)
+  final        Decimal  @default(0) @db.Decimal(5, 2)
+  total        Decimal  @default(0) @db.Decimal(5, 2)
+  letterGrade  String?
+  gpaPoints    Decimal? @db.Decimal(3, 2)
+  isPublished  Boolean  @default(false)
+  updatedBy    Int?
+  updatedAt    DateTime @updatedAt
+
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  updater    User?      @relation("UpdatedBy", fields: [updatedBy], references: [id])
+}
+
+model Attendance {
+  id         Int              @id @default(autoincrement())
+  studentId  Int
+  courseId   Int
+  date       DateTime         @db.Date
+  status     AttendanceStatus
+  recordedBy Int?
+  note       String?
+  createdAt  DateTime         @default(now())
+
+  student  Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course   Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  recorder User?   @relation("RecordedBy", fields: [recordedBy], references: [id])
+
+  @@unique([studentId, courseId, date])
+}
+
+model Schedule {
+  id        Int         @id @default(autoincrement())
+  courseId  Int
+  dayOfWeek DayOfWeek
+  startTime String
+  endTime   String
+  room      String?
+  type      SessionType @default(lecture)
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+}
+
+model Assignment {
+  id          Int      @id @default(autoincrement())
+  courseId    Int
+  title       String
+  description String?  @db.Text
+  fileUrl     String?
+  maxGrade    Decimal  @default(100) @db.Decimal(5, 2)
+  dueDate     DateTime
+  createdBy   Int
+  createdAt   DateTime @default(now())
+
+  course      Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  creator     User         @relation(fields: [createdBy], references: [id])
+  submissions Submission[]
+}
+
+model Submission {
+  id           Int       @id @default(autoincrement())
+  assignmentId Int
+  studentId    Int
+  fileUrl      String?
+  submittedAt  DateTime  @default(now())
+  grade        Decimal?  @db.Decimal(5, 2)
+  feedback     String?   @db.Text
+  gradedBy     Int?
+  gradedAt     DateTime?
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  student    Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  grader     User?      @relation("GradedBy", fields: [gradedBy], references: [id])
+
+  @@unique([assignmentId, studentId])
+}
+
+model Exam {
+  id          Int      @id @default(autoincrement())
+  courseId    Int
+  title       String
+  examDate    DateTime
+  durationMin Int
+  room        String?
+  type        ExamType
+  maxGrade    Decimal  @default(100) @db.Decimal(5, 2)
+  createdBy   Int
+
+  course  Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  creator User   @relation(fields: [createdBy], references: [id])
+}
+
+model Request {
+  id           Int           @id @default(autoincrement())
+  studentId    Int
+  type         RequestType
+  description  String?       @db.Text
+  status       RequestStatus @default(pending)
+  handledBy    Int?
+  responseNote String?       @db.Text
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  handler User?   @relation("HandledBy", fields: [handledBy], references: [id])
+}
+
+model Notification {
+  id        Int              @id @default(autoincrement())
+  userId    Int
+  title     String
+  body      String?          @db.Text
+  type      NotificationType @default(info)
+  isRead    Boolean          @default(false)
+  link      String?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+}
+
+model Payment {
+  id         Int           @id @default(autoincrement())
+  studentId  Int
+  amount     Decimal       @db.Decimal(10, 2)
+  type       PaymentType
+  status     PaymentStatus @default(pending)
+  dueDate    DateTime?     @db.Date
+  paidAt     DateTime?
+  method     String?
+  receiptUrl String?
+  createdAt  DateTime      @default(now())
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+}
+
+model Message {
+  id         Int      @id @default(autoincrement())
+  senderId   Int
+  receiverId Int
+  subject    String?
+  body       String   @db.Text
+  isRead     Boolean  @default(false)
+  parentId   Int?
+  createdAt  DateTime @default(now())
+
+  sender   User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User     @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+  parent   Message? @relation("Replies", fields: [parentId], references: [id])
+  replies  Message[] @relation("Replies")
+}
+
+model Announcement {
+  id        Int      @id @default(autoincrement())
+  courseId  Int?
+  title     String
+  body      String   @db.Text
+  priority  String   @default("normal")
+  createdBy Int
+  createdAt DateTime @default(now())
+
+  course  Course? @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  creator User    @relation(fields: [createdBy], references: [id])
+}
+
+model LoginHistory {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  ipAddress String?
+  userAgent String?
+  status    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ActivityLog {
+  id         Int      @id @default(autoincrement())
+  userId     Int?
+  action     String
+  entityType String?
+  entityId   Int?
+  metadata   Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
